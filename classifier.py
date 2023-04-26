@@ -35,7 +35,7 @@ class FullyConnectedLayer(nn.Module):
 
         self.linear = nn.Linear(in_features, out_features, bias=bias)
         self.activation = _activation_funcs[activation]
-        self.act_params = activation_params
+        self.act_params = activation_params if activation_params is not None else {}
         self.dropout = nn.Dropout(p=dropout_p) if dropout else nn.Identity()
 
     def forward(self, x):
@@ -100,14 +100,11 @@ class ResnetClassifierModule(pl.LightningModule):
         self.model = get_resnet_classifier(backbone, pretrained=pretrained, num_classes=num_classes)
 
         # Create loss module
-        self.loss_module = nn.BCEWithLogitsLoss() if multilabel else nn.CrossEntropyLoss()
+        self.loss = nn.BCEWithLogitsLoss() if multilabel else nn.CrossEntropyLoss()
 
         # Optimizer and scheduler configs
         self.optimizer_config = optimizer_config
         self.scheduler_config = scheduler_config
-
-        # Example input for visualizing the graph in Tensorboard
-        self.example_input_array = torch.zeros((1, 3, 32, 32), dtype=torch.float32)
 
     def configure_optimizers(self):
         if self.optimizer_config is None:
@@ -146,26 +143,35 @@ class ResnetClassifierModule(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         # "batch" is the output of the training data loader.
-        imgs, labels = batch
-        preds = self.model(imgs)
-        loss = self.loss_module(preds, labels)
-        acc = (preds.argmax(dim=-1) == labels).float().mean()
+        imgs, targets = batch
+        logits = self.model(imgs)
+        loss = self.loss(logits, targets.float())
 
         # Logs the accuracy per epoch to tensorboard (weighted average over batches)
-        self.log("train_acc", acc, on_step=False, on_epoch=True)
-        self.log("train_loss", loss)
-        return loss  # Return tensor to call ".backward" on
+        acc = (logits.argmax(dim=-1) == targets).float().mean()
+        self.log("train/acc", acc, on_step=False, on_epoch=True)
+        self.log("train/loss", loss, prog_bar=True)
 
+        return {'loss': loss, 'logits': logits, 'targets': targets}
+
+    @torch.no_grad()
     def validation_step(self, batch, batch_idx):
-        imgs, labels = batch
-        preds = self.model(imgs).argmax(dim=-1)
-        acc = (labels == preds).float().mean()
-        # By default logs it per epoch (weighted average over batches)
-        self.log("val_acc", acc)
+        imgs, targets = batch
+        logits = self.model(imgs)
 
+        # By default logs it per epoch (weighted average over batches)
+        acc = (logits.argmax(dim=-1) == targets).float().mean()
+        self.log("val/acc", acc)
+
+        return {'logits': logits, 'targets': targets}
+
+    @torch.no_grad()
     def test_step(self, batch, batch_idx):
-        imgs, labels = batch
-        preds = self.model(imgs).argmax(dim=-1)
-        acc = (labels == preds).float().mean()
-        # By default logs it per epoch (weighted average over batches), and returns it afterwards
-        self.log("test_acc", acc)
+        imgs, targets = batch
+        logits = self.model(imgs)
+
+        # By default logs it per epoch (weighted average over batches)
+        acc = (logits.argmax(dim=-1) == targets).float().mean()
+        self.log("test/acc", acc)
+
+        return {'logits': logits, 'targets': targets}

@@ -1,1 +1,2 @@
-from celeba import CelebADataModule
+from .base import ImageFolderDataset
+from .celeba import CelebADataModule
