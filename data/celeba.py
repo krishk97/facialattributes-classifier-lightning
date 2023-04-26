@@ -1,3 +1,4 @@
+from typing import Optional
 import numpy as np
 
 from torch.utils.data import DataLoader
@@ -11,10 +12,10 @@ import pytorch_lightning as pl
 
 class CelebADataModule(pl.LightningDataModule):
     def __init__(self,
-                 data_dir,
-                 attr_names=None,
-                 batch_size=64,
-                 max_train_imgs=None, # max number of training images to use
+                 data_dir: str,
+                 attr_names: Optional[list] = None,
+                 batch_size: int = 64,
+                 max_train_imgs: Optional[int] = None, # max number of training images to use
                  **dataloader_kwargs):
         super().__init__()
         self.data_dir = data_dir
